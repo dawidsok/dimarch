@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# X11's screensaver locks at 10 minutes through xss-lock; DPMS blanks at 15.
+# Suspend after 30 minutes while the session remains idle.
+while sleep 30; do
+    idle=$(xprintidle)
+    if (( idle >= 1800000 )); then
+        systemctl suspend
+        # Do not immediately suspend again if X retained its idle counter on resume.
+        until (( $(xprintidle) < 1800000 )); do sleep 30; done
+    fi
+done

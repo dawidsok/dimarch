@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+xsetroot -solid '#111111'
+wallpaper=/usr/local/share/dimarch/wallpaper.jpg
+if [[ -f $wallpaper ]]; then feh --no-fehbg --bg-fill "$wallpaper"; fi

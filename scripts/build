@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+[[ $(uname -m) == x86_64 && -f /etc/arch-release ]] || {
+    echo 'ISO builds require x86_64 Arch Linux (native host or VM); macOS/ARM builds are unsupported.' >&2; exit 1;
+}
+[[ $EUID == 0 ]] || { echo 'Run as root.' >&2; exit 1; }
+for cmd in mkarchiso rsync; do command -v "$cmd" >/dev/null || { echo "Install archiso and rsync: missing $cmd" >&2; exit 1; }; done
+[[ -d /usr/share/archiso/configs/releng ]] || exit 1
+# Fresh work directory prevents old pacman/cache state contaminating a release.
+work=$(mktemp -d /var/tmp/dimarch-build.XXXXXX)
+trap 'echo "Build work retained at: $work"' EXIT
+mkdir -p out "$work/profile"
+cp -a /usr/share/archiso/configs/releng/. "$work/profile/"
+cat >> "$work/profile/profiledef.sh" <<'PROFILE'
+iso_name="dimarch"
+iso_label="DIMARCH_$(date +%Y%m)"
+iso_publisher="Dimarch"
+iso_application="Dimarch live installer"
+PROFILE
+root="$work/profile/airootfs"
+mkdir -p "$root/opt/dimarch" "$root/root" "$root/etc/systemd/system/multi-user.target.wants"
+rsync -a --exclude=.git --exclude=build --exclude=out ./ "$root/opt/dimarch/"
+cat >> "$work/profile/packages.x86_64" <<'PACKAGES'
+gum
+jq
+networkmanager
+reflector
+pciutils
+usbutils
+broadcom-wl-dkms
+linux-headers
+PACKAGES
+sort -u "$work/profile/packages.x86_64" -o "$work/profile/packages.x86_64"
+# releng autologs root into zsh on tty1. Source its existing profile, then launch.
+cat >> "$root/root/.zlogin" <<'LOGIN'
+if [[ $(tty) == /dev/tty1 ]]; then /bin/bash /opt/dimarch/iso/launch; fi
+LOGIN
+# Use one networking manager so Wi-Fi profiles can be retained by a future live install.
+rm -f "$root/etc/systemd/system/multi-user.target.wants/iwd.service" \
+    "$root/etc/systemd/system/multi-user.target.wants/systemd-networkd.service" \
+    "$root/etc/systemd/system/dbus-org.freedesktop.network1.service"
+ln -sf /usr/lib/systemd/system/NetworkManager.service "$root/etc/systemd/system/multi-user.target.wants/NetworkManager.service"
+mkarchiso -v -w "$work/work" -o "$PWD/out" "$work/profile"
+(cd out; sha256sum ./*.iso > SHA256SUMS)
+echo 'Build complete. Upload a reviewed ISO, checksum, package manifest (in ISO), and notes manually.'

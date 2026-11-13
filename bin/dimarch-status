@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# i3status supplies network/time; add title and PipeWire's Pulse-compatible volume.
+printf '{"version":1}\n[\n[]\n'
+i3status -c "$HOME/.config/i3status/config" | while IFS= read -r line; do
+    line=${line#,}
+    [[ $line == '['* && $line != '[' ]] || continue
+    active=$(xprop -root _NET_ACTIVE_WINDOW 2>/dev/null | awk '{print $NF}')
+    title=''
+    if [[ $active =~ ^0x[0-9a-fA-F]+$ && $active != 0x0 ]]; then
+        title=$(xprop -id "$active" _NET_WM_NAME 2>/dev/null | sed 's/^[^=]*= "//; s/"$//' || true)
+    fi
+    volume=$(pamixer --get-volume-human 2>/dev/null || printf unavailable)
+    printf ',%s\n' "$(jq -c --arg title "${title:0:70}" --arg volume "$volume" \
+        '[{full_text:$title,separator:true}] + . + [{full_text:("vol " + $volume)}]' <<< "$line")"
+done

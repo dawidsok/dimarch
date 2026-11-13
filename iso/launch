@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if gum confirm 'Start Dimarch? Choose No for a maintenance shell.'; then
+    /bin/bash /opt/dimarch/bin/dimarch || {
+        echo 'Dimarch stopped. You are back in the maintenance shell.'
+        read -r -p 'Press Enter to continue.' _
+    }
+fi

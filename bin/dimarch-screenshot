@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p "$HOME/Pictures/Screenshots"
+file=$(mktemp "$HOME/Pictures/Screenshots/$(date +%Y%m%d-%H%M%S).XXXXXX.png")
+trap '[[ -s $file ]] || rm -f "$file"' EXIT
+case "${1:-full}" in
+    full) maim "$file" ;;
+    region) maim --select "$file" ;;
+    *) echo 'Usage: dimarch-screenshot [full|region]' >&2; exit 1 ;;
+esac
+xclip -selection clipboard -t image/png -i "$file"
+notify-send 'Screenshot saved and copied' "$file"

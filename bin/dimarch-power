@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+choice=$(printf '%s\n' Lock Logout Suspend Reboot Shutdown | rofi -dmenu -p Power) || exit 0
+case "$choice" in
+    Lock) loginctl lock-session; exit ;;
+    Logout|Suspend|Reboot|Shutdown) ;;
+    *) exit 0 ;;
+esac
+[[ $(printf 'Cancel\nConfirm\n' | rofi -dmenu -p "$choice?") == Confirm ]] || exit 0
+case "$choice" in
+    Logout) i3-msg exit ;;
+    Suspend) systemctl suspend ;;
+    Reboot) systemctl reboot ;;
+    Shutdown) systemctl poweroff ;;
+esac

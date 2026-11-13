@@ -1,0 +1,35 @@
+# Dimarch: no framework, no session auto-start, no host-specific paths.
+export EDITOR=nvim
+export VISUAL=nvim
+export NVM_DIR="$HOME/.nvm"
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$HOME/.local/bin:$HOME/.bun/bin:$HOME/.cargo/bin:$PYENV_ROOT/bin:$PATH"
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=20000
+SAVEHIST=20000
+setopt HIST_IGNORE_DUPS SHARE_HISTORY AUTO_CD
+bindkey -e
+autoload -Uz compinit
+compinit
+PROMPT='%F{8}%~%f %# '
+command -v fzf >/dev/null && eval "$(fzf --zsh)"
+command -v zoxide >/dev/null && eval "$(zoxide init zsh)"
+[[ -r /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]] && source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+[[ -r /usr/share/nvm/init-nvm.sh ]] && source /usr/share/nvm/init-nvm.sh
+command -v pyenv >/dev/null && eval "$(pyenv init - zsh)"
+alias vi=nvim
+alias vim=nvim
+alias lg=lazygit
+alias ls='eza'
+alias clr=clear
+# Explicit session picker: normal Ghostty windows remain ordinary shells.
+zj() {
+    if (( $# )); then zellij "$@"; return; fi
+    local sessions selected
+    sessions=$(zellij list-sessions --short --no-formatting 2>/dev/null)
+    if [[ -z $sessions ]]; then zellij; return; fi
+    selected=$(printf '%s\n' "$sessions" | fzf --prompt='Session: ') || return
+    [[ -z $selected ]] || zellij attach "$selected"
+}
+# Highlighting must be sourced after widget/keybinding definitions.
+[[ -r /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

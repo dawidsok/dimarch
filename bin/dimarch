@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=lib/common.sh
+source "$ROOT/lib/common.sh"
+[[ $EUID == 0 ]] || { echo 'Run Dimarch with sudo/root.' >&2; exit 1; }
+[[ -f /etc/arch-release && $(uname -m) == x86_64 ]] || { echo 'Dimarch requires x86_64 Arch Linux.' >&2; exit 1; }
+for cmd in gum jq flock; do
+    command -v "$cmd" >/dev/null || { echo "Missing $cmd. Install gum, jq, util-linux first." >&2; exit 1; }
+done
+mkdir -p /var/log/dimarch /var/lib/dimarch
+exec 9>/var/lib/dimarch/installer.lock
+flock -n 9 || { echo 'Another Dimarch process is active.' >&2; exit 1; }
+LOG=$(mktemp /var/log/dimarch/install.XXXXXXXX.log)
+log() { printf '%s %s\n' "$(date -Is)" "$*" >> "$LOG"; }
+fail() { printf '%s\nLog: %s\n' "$*" "$LOG" >&2; log "$*"; exit 1; }
+on_error() {
+    local status=$?
+    printf 'Stage failed (exit %s). See %s. No later stages were run.\n' "$status" "$LOG" >&2
+    exit "$status"
+}
+trap on_error ERR
+log 'Dimarch started. Prompt values, credentials and command tracing are never logged.'
+gum style --border normal --padding '1 2' 'DIMARCH' 'i3 / Xorg / Dim Sum Darker'
+MODE=$(gum choose 'Configure existing Arch' 'Replace macOS (not yet available)' 'Beside macOS (not yet available)' 'Abort')
+case "$MODE" in
+    Abort) exit 0 ;;
+    'Replace macOS'*|'Beside macOS'*)
+        fail 'BLOCKED: live disk installation is not implemented safely yet. Apple APFS/recovery detection, ESP/XBOOTLDR allocation, LUKS recovery, and resumable disk operations require disposable-disk validation. No disks were changed. Use maintenance shell or configure an already installed Arch system.' ;;
+esac
+[[ ! -d /run/archiso ]] || fail 'Configure mode must run inside an installed Arch system, not the live ISO. No changes made.'
+HARDWARE=$(cat /sys/class/dmi/id/product_name 2>/dev/null || printf unknown)
+if ! supported_hardware "$HARDWARE"; then
+    gum style "Unsupported hardware: $HARDWARE. Only Macmini7,1 is targeted; drivers are not changed in configure mode."
+    [[ $(gum input --placeholder 'Type FORCE to continue') == FORCE ]] || fail 'Hardware override not confirmed.'
+fi
+mapfile -t users < <(getent passwd | awk -F: '$3>=1000 && $3<65534 && $6 ~ /^\/home\// {print $1}')
+[[ ${#users[@]} -gt 0 ]] || fail 'Create a non-root user with a home under /home before configure mode.'
+USER_NAME=$(gum choose "${users[@]}")
+valid_user "$USER_NAME" || fail 'Invalid user.'
+USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
+USER_UID=$(id -u "$USER_NAME")
+[[ -d $USER_HOME && ! -L $USER_HOME && $(stat -c %u "$USER_HOME") == "$USER_UID" ]] || fail 'Home must be an existing, user-owned, non-symlink directory.'
+MODULES=$(gum choose --no-limit --selected desktop,tools,dev,media,config desktop tools dev media config) || exit 0
+[[ -n $MODULES ]] || fail 'No modules selected.'
+while IFS= read -r module; do valid_module "$module" || fail 'Invalid module.'; done <<< "$MODULES"
+if grep -qx config <<< "$MODULES" && ! grep -qx desktop <<< "$MODULES"; then
+    fail 'The config module requires the desktop module; select both to avoid installing unusable i3/Ghostty configuration.'
+fi
+REAPPLY=no
+if gum confirm 'Reapply successful stages? Choose No to resume by skipping completed stages.'; then REAPPLY=yes; fi
+# User values never enter logs or persistent stage metadata.
+GIT_NAME=$(gum input --placeholder 'Git name (blank to leave unchanged)')
+GIT_EMAIL=$(gum input --placeholder 'Git email (blank to leave unchanged)')
+[[ -z $GIT_NAME || $GIT_NAME != -* ]] || fail 'Git name must not begin with a dash.'
+[[ -z $GIT_EMAIL || $GIT_EMAIL != -* ]] || fail 'Git email must not begin with a dash.'
+render_plan "$MODE" "$USER_NAME" "$HARDWARE" "$(echo "$MODULES" | tr '\n' ' ')"
+if grep -qx desktop <<< "$MODULES"; then
+    gum style 'Desktop stage enables LightDM, NetworkManager, Bluetooth, timesync, fstrim, zram and deny-incoming UFW. Existing UFW exceptions are retained. Existing display/network managers are not silently disabled.'
+fi
+printf '\nPreflight performs a FULL pacman -Syu upgrade (never a partial upgrade).\nSelected official packages:\n'
+while IFS= read -r module; do read_packages "$ROOT/packages/$module"; done <<< "$MODULES" | sort -u
+if grep -qx dev <<< "$MODULES"; then
+    gum style 'User downloads: Node LTS (NVM), stable Python (pyenv), stable Rust and Pi via Bun. No secrets or GitHub authentication are requested.'
+fi
+gum confirm 'Apply this additive plan to the existing system?' || exit 0
+# No packages/configs/services are changed before confirmation.
+# Refuse third-party repositories rather than accidentally resolving our names there.
+while IFS= read -r repo; do
+    case "$repo" in core|extra|multilib) ;; *) fail "Unsupported pacman repository: $repo. Only stable official Arch repositories are supported." ;; esac
+done < <(pacman-conf --repo-list)
+gum style 'Checking online Arch package access and clock…'
+getent hosts archlinux.org >/dev/null || fail 'DNS unavailable. Connect with nmtui then retry.'
+[[ $(timedatectl show -p NTPSynchronized --value) == yes ]] || fail 'Clock is not synchronized. Enable your time service, wait, and retry.'
+# Full upgrade only: Arch does not support partial upgrades. No downloaded output contains prompts/secrets.
+pacman -Syu --needed --noconfirm >> "$LOG" 2>&1
+while IFS= read -r module; do
+    while IFS= read -r package; do pacman -Si "$package" >> "$LOG" 2>&1 || fail "Official package unavailable: $package"; done < <(read_packages "$ROOT/packages/$module")
+done <<< "$MODULES"
+RELEASE=$(find "$ROOT/bin" "$ROOT/lib" "$ROOT/config" "$ROOT/packages" "$ROOT/assets" -type f -exec sha256sum {} + | sort | sha256sum | cut -c1-16)
+STATE="/var/lib/dimarch/$USER_UID/$RELEASE"
+mkdir -p "$STATE"
+export ROOT USER_NAME USER_HOME LOG
+while IFS= read -r module; do
+    marker="$STATE/$module.done"
+    if [[ -e $marker && $REAPPLY == no ]]; then log "Skipping completed $module"; echo "Skipping $module"; continue; fi
+    gum style "Applying $module…"
+    # Marker is invalidated before reapply, never retained on a failed reapply.
+    rm -f "$marker"
+    mapfile -t packages < <(read_packages "$ROOT/packages/$module")
+    pacman -S --needed --noconfirm "${packages[@]}" >> "$LOG" 2>&1
+    case "$module" in
+        desktop) bash "$ROOT/lib/desktop.sh" >> "$LOG" 2>&1 ;;
+        config) bash "$ROOT/lib/configure.sh" >> "$LOG" 2>&1 ;;
+        dev) runuser -u "$USER_NAME" -- env HOME="$USER_HOME" bash "$ROOT/lib/development.sh" >> "$LOG" 2>&1 ;;
+    esac
+    touch "$marker"
+    log "Completed $module"
+done <<< "$MODULES"
+if [[ -n $GIT_NAME || -n $GIT_EMAIL ]]; then
+    command -v git >/dev/null || fail 'Git identity requested but Git is not installed. Select tools and rerun.'
+    [[ -z $GIT_NAME ]] || runuser -u "$USER_NAME" -- env HOME="$USER_HOME" git config --global user.name "$GIT_NAME"
+    [[ -z $GIT_EMAIL ]] || runuser -u "$USER_NAME" -- env HOME="$USER_HOME" git config --global user.email "$GIT_EMAIL"
+fi
+# Deliberately expand $HOME in the target user's shell, not in the root process.
+# shellcheck disable=SC2016
+runuser -u "$USER_NAME" -- env HOME="$USER_HOME" bash -c '
+    report=$(mktemp "$HOME/.dimarch-post-install.XXXXXXXX")
+    cat > "$report"
+    mv -fT -- "$report" "$HOME/dimarch-post-install.txt"
+' <<REPORT
+Dimarch configured the existing Arch system. No partitions or bootloader were changed.
+Modules: $MODULES
+Manual tasks:
+- Retrieve your Neovim configuration (not copied or fetched).
+- Install 1Password manually, set up SSH agent/keys, then run gh auth login.
+- Sign in to Proton VPN in its GTK app if the desktop module was selected.
+- Pi credentials and private settings remain your responsibility.
+- Review local logs: $LOG (root only).
+- Review backups under ~/.local/state/dimarch/backups before deleting anything.
+- Keep user data backed up externally. No backup service was installed.
+- Update manually with sudo pacman -Syu. Toolchains and Pi update separately.
+- Reboot after reviewing enabled services. Login is not automatic.
+- Hardware drivers, user credentials, wheel/sudo policy and root login were NOT changed in configure mode.
+REPORT
+log 'Completed configure mode.'
+gum style "Complete. Report: $USER_HOME/dimarch-post-install.txt" "Log: $LOG" 'Reboot when ready; this mode does not reboot automatically.'

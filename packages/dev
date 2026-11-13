@@ -1,0 +1,14 @@
+base-devel
+bun
+nvm
+pyenv
+rustup
+openssl
+zlib
+xz
+tk
+sqlite
+bzip2
+libffi
+readline
+ncurses

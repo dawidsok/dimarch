@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+files=(bin/* lib/*.sh scripts/* tests/run iso/launch)
+for file in "${files[@]}"; do bash -n "$file"; done
+command -v shellcheck >/dev/null || { echo 'Install ShellCheck to run lint.' >&2; exit 1; }
+shellcheck -x "${files[@]}"

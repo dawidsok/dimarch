@@ -1,0 +1,23 @@
+configuration {
+    modi: "drun,run";
+    font: "JetBrainsMono Nerd Font 11";
+    show-icons: false;
+    display-drun: "run";
+}
+@theme "default"
+* {
+    background: #111111;
+    foreground: #c9c9c9;
+    selected-normal-background: #303030;
+    selected-normal-foreground: #eeeeee;
+    normal-background: #111111;
+    normal-foreground: #c9c9c9;
+    alternate-normal-background: #1a1a1a;
+    alternate-normal-foreground: #c9c9c9;
+    border-color: #858585;
+    separatorcolor: #303030;
+    border-radius: 0px;
+}
+window { width: 600px; border: 1px; padding: 8px; }
+listview { lines: 8; spacing: 2px; }
+element { padding: 4px; }

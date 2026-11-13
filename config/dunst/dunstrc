@@ -1,0 +1,25 @@
+[global]
+font = JetBrainsMono Nerd Font 10
+width = 340
+origin = top-right
+offset = 8x30
+frame_width = 1
+frame_color = "#565656"
+separator_color = "#303030"
+corner_radius = 0
+padding = 8
+horizontal_padding = 8
+format = "<b>%s</b>\n%b"
+[urgency_low]
+background = "#111111"
+foreground = "#858585"
+timeout = 4
+[urgency_normal]
+background = "#111111"
+foreground = "#c9c9c9"
+timeout = 8
+[urgency_critical]
+background = "#111111"
+foreground = "#c9c9c9"
+frame_color = "#a46f6f"
+timeout = 0

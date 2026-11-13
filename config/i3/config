@@ -1,0 +1,97 @@
+set $mod Mod4
+font pango:JetBrainsMono Nerd Font 10
+floating_modifier $mod
+focus_follows_mouse no
+workspace_auto_back_and_forth yes
+default_border pixel 1
+default_floating_border pixel 1
+gaps inner 4
+gaps outer 4
+hide_edge_borders none
+# class                 border  background text    indicator child_border
+client.focused          #858585 #242424 #eeeeee #71908d #858585
+client.focused_inactive #303030 #1a1a1a #c9c9c9 #303030 #303030
+client.unfocused        #303030 #111111 #858585 #303030 #303030
+client.urgent           #a46f6f #a46f6f #111111 #a46f6f #a46f6f
+client.background #111111
+bindsym $mod+Return exec ghostty
+bindsym $mod+d exec rofi -show drun
+# Ctrl avoids conflicting with Vim's Mod+l right-focus binding.
+bindsym $mod+Ctrl+l exec loginctl lock-session
+bindsym $mod+Shift+e exec dimarch-power
+bindsym $mod+Shift+q kill
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+bindsym $mod+Left focus left
+bindsym $mod+Down focus down
+bindsym $mod+Up focus up
+bindsym $mod+Right focus right
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+bindsym $mod+Shift+Left move left
+bindsym $mod+Shift+Down move down
+bindsym $mod+Shift+Up move up
+bindsym $mod+Shift+Right move right
+bindsym $mod+b split h
+bindsym $mod+v split v
+bindsym $mod+f fullscreen toggle
+bindsym $mod+s layout stacking
+bindsym $mod+w layout tabbed
+bindsym $mod+e layout toggle split
+bindsym $mod+Shift+space floating toggle
+bindsym $mod+space focus mode_toggle
+bindsym $mod+a focus parent
+bindsym $mod+Shift+c reload
+bindsym $mod+Shift+r restart
+bindsym Print exec dimarch-screenshot full
+bindsym Shift+Print exec dimarch-screenshot region
+bindsym XF86AudioRaiseVolume exec pamixer -i 5
+bindsym XF86AudioLowerVolume exec pamixer -d 5
+bindsym XF86AudioMute exec pamixer -t
+bindsym $mod+1 workspace number 1
+bindsym $mod+Shift+1 move container to workspace number 1
+bindsym $mod+2 workspace number 2
+bindsym $mod+Shift+2 move container to workspace number 2
+bindsym $mod+3 workspace number 3
+bindsym $mod+Shift+3 move container to workspace number 3
+bindsym $mod+4 workspace number 4
+bindsym $mod+Shift+4 move container to workspace number 4
+bindsym $mod+5 workspace number 5
+bindsym $mod+Shift+5 move container to workspace number 5
+bindsym $mod+6 workspace number 6
+bindsym $mod+Shift+6 move container to workspace number 6
+bindsym $mod+7 workspace number 7
+bindsym $mod+Shift+7 move container to workspace number 7
+bindsym $mod+8 workspace number 8
+bindsym $mod+Shift+8 move container to workspace number 8
+bindsym $mod+9 workspace number 9
+bindsym $mod+Shift+9 move container to workspace number 9
+bar {
+    position top
+    status_command dimarch-status
+    font pango:JetBrainsMono Nerd Font 10
+    strip_workspace_numbers no
+    colors {
+        background #111111
+        statusline #c9c9c9
+        separator #565656
+        focused_workspace #858585 #242424 #eeeeee
+        active_workspace #303030 #1a1a1a #c9c9c9
+        inactive_workspace #111111 #111111 #858585
+        urgent_workspace #a46f6f #a46f6f #111111
+    }
+}
+exec_always --no-startup-id dimarch-wallpaper
+exec --no-startup-id dunst
+exec --no-startup-id nm-applet
+exec --no-startup-id blueman-applet
+exec --no-startup-id /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1
+exec --no-startup-id gnome-keyring-daemon --start --components=secrets
+exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork --color=111111
+exec --no-startup-id xset s 600 600
+exec --no-startup-id xset dpms 900 900 900
+exec --no-startup-id dimarch-idle

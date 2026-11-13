@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+[[ $(uname -m) == x86_64 && -f /etc/arch-release ]] || { echo 'Boot validation requires x86_64 Arch with QEMU and edk2-ovmf.' >&2; exit 1; }
+command -v qemu-system-x86_64 >/dev/null || { echo 'Install qemu-desktop and edk2-ovmf.' >&2; exit 1; }
+iso=${1:-}
+if [[ -z $iso ]]; then
+    shopt -s nullglob
+    images=(out/*.iso)
+    [[ ${#images[@]} == 1 ]] || { echo 'Specify one ISO: scripts/boot out/image.iso' >&2; exit 1; }
+    iso=${images[0]}
+fi
+[[ -f $iso ]] || { echo 'ISO not found.' >&2; exit 1; }
+firmware=/usr/share/edk2/x64/OVMF_CODE.4m.fd
+[[ -f $firmware ]] || { echo "Missing OVMF firmware: $firmware" >&2; exit 1; }
+# No guest disk and no host block devices: this checks boot/UI, not installation.
+qemu-system-x86_64 -machine q35 -m 4096 -smp 2 -nic user,model=virtio-net-pci \
+    -drive "if=pflash,format=raw,readonly=on,file=$firmware" -cdrom "$iso" -boot d
+read -r -p 'Did Dimarch reach its Gum menu? Type PASS to confirm: ' answer
+[[ $answer == PASS ]] || { echo 'Boot smoke check was not confirmed.' >&2; exit 1; }

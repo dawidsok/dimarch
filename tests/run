@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# No block devices, mounts, root actions, pacman, or network access in tests.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+# shellcheck source=lib/common.sh
+source lib/common.sh
+assert() { "$@" || { echo "FAIL: $*" >&2; exit 1; }; }
+reject() { if "$@"; then echo "FAIL: unexpectedly accepted: $*" >&2; exit 1; fi; }
+assert supported_hardware Macmini7,1
+reject supported_hardware Macmini6,2
+reject supported_hardware unknown
+assert valid_user dave
+reject valid_user root
+reject valid_user '../root'
+reject valid_user 'user;id'
+assert valid_hostname mac-mini
+reject valid_hostname '-mac'
+reject valid_hostname 'mac.local'
+assert valid_module dev
+reject valid_module '../dev'
+fixture=$(mktemp)
+trap 'rm -f "$fixture"' EXIT
+printf '# comment\n\ngit # inline\njq\n' > "$fixture"
+[[ $(read_packages "$fixture") == $'git \njq' ]]
+plan=$(render_plan 'Configure existing Arch' dave Macmini7,1 'tools config')
+[[ $plan == *'Partitions/bootloader: UNCHANGED'* && $plan == *'Packages: additive, no removals'* ]]
+for module in desktop tools dev media config; do
+    while IFS= read -r pkg; do [[ $pkg =~ ^[a-z0-9][a-z0-9+._-]*$ ]]; done < <(read_packages "packages/$module")
+done
+# Keep the resolved lock/focus contract and avoid duplicate bindings.
+grep -Fq "bindsym \$mod+Ctrl+l exec loginctl lock-session" config/i3/config
+grep -Fq "bindsym \$mod+l focus right" config/i3/config
+[[ -z $(awk '/^bindsym/ {print $2}' config/i3/config | sort | uniq -d) ]]
+grep -Fqx 'proton-vpn-gtk-app' packages/desktop
+grep -Fqx 'xprintidle' packages/desktop
+grep -Fq 'idle >= 1800000' bin/dimarch-idle
+if grep -R -q '^xautolock$' packages; then echo 'AUR-only xautolock must not be selected.' >&2; exit 1; fi
+grep -Fq "' <<REPORT" bin/dimarch
+# shellcheck disable=SC2016
+grep -Fq 'mv -fT -- "$report"' bin/dimarch
+# All user configs must be portable to Linux.
+if grep -R -n '/Users/' config; then echo 'Host-specific config path found.' >&2; exit 1; fi
+# Destructive branches must remain blocked until their dedicated tests exist.
+grep -q 'BLOCKED: live disk installation' bin/dimarch
+if grep -E '\b(wipefs|mkfs|sgdisk|parted|cryptsetup|bootctl)\b' bin/dimarch | grep -v 'BLOCKED:'; then
+    echo 'Unexpected disk command in blocked installer.' >&2; exit 1
+fi
+printf 'PASS: pure validation, package parsing, plan, bindings, portability, disk safety gate\n'
